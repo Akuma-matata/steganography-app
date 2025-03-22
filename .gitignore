@@ -1,0 +1,9 @@
+# File: .gitignore
+target/
+uploads/
+.idea/
+*.iml
+.vscode/
+*.class
+*.log
+.DS_Store

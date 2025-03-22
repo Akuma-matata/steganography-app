@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steganography App</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div id="app" class="container mx-auto px-4 py-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-indigo-700">Steganography App</h1>
+            <p class="text-gray-600">Hide passwords in images using LSB steganography</p>
+        </header>
+
+        <div class="bg-white rounded-lg shadow-md p-6 max-w-3xl mx-auto">
+            <!-- Tab Navigation -->
+            <div class="flex border-b mb-6">
+                <button @click="activeTab = 'encode'" 
+                        :class="{'text-indigo-600 border-b-2 border-indigo-600 -mb-px': activeTab === 'encode',
+                                'text-gray-500 hover:text-gray-700': activeTab !== 'encode'}"
+                        class="py-3 px-6 font-medium focus:outline-none">
+                    Encode Password
+                </button>
+                <button @click="activeTab = 'decode'"
+                        :class="{'text-indigo-600 border-b-2 border-indigo-600 -mb-px': activeTab === 'decode',
+                                'text-gray-500 hover:text-gray-700': activeTab !== 'decode'}"
+                        class="py-3 px-6 font-medium focus:outline-none">
+                    Decode Password
+                </button>
+            </div>
+
+            <!-- Encode Tab -->
+            <div v-if="activeTab === 'encode'" class="space-y-6">
+                <div v-if="!encodedImageId">
+                    <!-- Step 1: Upload Image -->
+                    <div v-if="!originalImageId" class="text-center p-6 border-2 border-dashed border-gray-300 rounded-lg hover:border-indigo-500 transition-colors">
+                        <input type="file" accept="image/jpeg,image/png" @change="handleFileSelect" class="hidden" ref="fileInput">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <p class="mt-2 text-gray-600">Drag & drop an image here, or</p>
+                        <button @click="$refs.fileInput.click()" class="mt-2 text-indigo-600 font-medium hover:text-indigo-500 focus:outline-none">
+                            browse to select a file
+                        </button>
+                        <p class="mt-1 text-xs text-gray-500">PNG or JPG up to 10MB</p>
+                    </div>
+                    
+                    <!-- Image Upload in Progress -->
+                    <div v-if="isUploading" class="text-center">
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent"></div>
+                        <p class="mt-2 text-gray-600">Uploading image...</p>
+                    </div>
+
+                    <!-- Step 2: Enter Password -->
+                    <div v-if="originalImageId && !isUploading" class="space-y-4">
+                        <div class="flex items-center space-x-4">
+                            <img :src="apiUrl + '/api/image/' + originalImageId" alt="Original Image" class="w-32 h-32 object-cover rounded">
+                            <div>
+                                <h3 class="font-medium">Enter a password to hide in this image:</h3>
+                                <div class="mt-2">
+                                    <input type="password" v-model="password" placeholder="Enter password" 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-end space-x-2">
+                            <button @click="resetEncode" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
+                                Cancel
+                            </button>
+                            <button @click="encodePassword" :disabled="!password || isEncoding" 
+                                    class="px-4 py-2 border border-transparent rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none disabled:opacity-50">
+                                <span v-if="isEncoding">Encoding...</span>
+                                <span v-else>Encode Password</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Success - Download Encoded Image -->
+                <div v-if="encodedImageId" class="text-center space-y-4">
+                    <div class="bg-green-50 border border-green-200 rounded-md p-4">
+                        <p class="text-green-700">Password successfully encoded in the image!</p>
+                    </div>
+                    <img :src="apiUrl + '/api/image/' + encodedImageId" alt="Encoded Image" class="mx-auto max-h-64">
+                    <div>
+                        <a :href="apiUrl + '/api/image/' + encodedImageId" download="encoded-image" 
+                           class="inline-block px-4 py-2 border border-transparent rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none">
+                            Download Encoded Image
+                        </a>
+                    </div>
+                    <div>
+                        <button @click="resetEncode" class="text-indigo-600 hover:text-indigo-500 focus:outline-none">
+                            Encode Another Image
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="encodeError" class="mt-2 text-red-600 text-sm">
+                    {{ encodeError }}
+                </div>
+            </div>
+
+            <!-- Decode Tab -->
+            <div v-if="activeTab === 'decode'" class="space-y-6">
+                <!-- Step 1: Upload Encoded Image -->
+                <div v-if="!decodedPassword" class="text-center p-6 border-2 border-dashed border-gray-300 rounded-lg hover:border-indigo-500 transition-colors">
+                    <input type="file" accept="image/jpeg,image/png" @change="handleDecodeFileSelect" class="hidden" ref="decodeFileInput">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p class="mt-2 text-gray-600">Upload an image with a hidden password</p>
+                    <button @click="$refs.decodeFileInput.click()" class="mt-2 text-indigo-600 font-medium hover:text-indigo-500 focus:outline-none">
+                        Select a file
+                    </button>
+                </div>
+
+                <!-- Image Upload in Progress -->
+                <div v-if="isDecoding" class="text-center">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent"></div>
+                    <p class="mt-2 text-gray-600">Decoding password...</p>
+                </div>
+
+                <!-- Step 2: Show Decoded Password -->
+                <div v-if="decodedPassword" class="space-y-4">
+                    <div class="bg-green-50 border border-green-200 rounded-md p-4">
+                        <p class="text-green-700">Password successfully decoded!</p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-md">
+                        <p class="text-sm text-gray-500 mb-1">Decoded Password:</p>
+                        <div class="flex">
+                            <input type="text" :value="decodedPassword" readonly class="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none">
+                            <button @click="copyPassword" class="ml-2 px-3 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
+                                {{ copied ? 'Copied!' : 'Copy' }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="text-center">
+                        <button @click="resetDecode" class="text-indigo-600 hover:text-indigo-500 focus:outline-none">
+                            Decode Another Image
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="decodeError" class="mt-2 text-red-600 text-sm">
+                    {{ decodeError }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const app = Vue.createApp({
+            data() {
+                return {
+                    apiUrl: 'http://localhost:8080',
+                    activeTab: 'encode',
+                    
+                    // Encode flow
+                    originalImageId: null,
+                    encodedImageId: null,
+                    password: '',
+                    isUploading: false,
+                    isEncoding: false,
+                    encodeError: null,
+                    
+                    // Decode flow
+                    encodedImageForDecodeId: null,
+                    decodedPassword: null,
+                    isDecoding: false,
+                    decodeError: null,
+                    copied: false
+                }
+            },
+            methods: {
+                handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.uploadImage(file);
+                    }
+                },
+                async uploadImage(file) {
+                    this.isUploading = true;
+                    this.encodeError = null;
+                    
+                    const formData = new FormData();
+                    formData.append('image', file);
+                    
+                    try {
+                        const response = await axios.post(this.apiUrl + '/api/upload', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            }
+                        });
+                        
+                        if (response.data.success) {
+                            this.originalImageId = response.data.imageId;
+                        } else {
+                            this.encodeError = response.data.error || 'Failed to upload image';
+                        }
+                    } catch (error) {
+                        this.encodeError = error.response?.data?.error || 'Failed to upload image';
+                    } finally {
+                        this.isUploading = false;
+                    }
+                },
+                async encodePassword() {
+                    if (!this.password) return;
+                    
+                    this.isEncoding = true;
+                    this.encodeError = null;
+                    
+                    const params = new URLSearchParams();
+                    params.append('imageId', this.originalImageId);
+                    params.append('password', this.password);
+                    
+                    try {
+                        const response = await axios.post(this.apiUrl + '/api/encode', params);
+                        
+                        if (response.data.success) {
+                            this.encodedImageId = response.data.encodedImageId;
+                        } else {
+                            this.encodeError = response.data.error || 'Failed to encode password';
+                        }
+                    } catch (error) {
+                        this.encodeError = error.response?.data?.error || 'Failed to encode password';
+                    } finally {
+                        this.isEncoding = false;
+                    }
+                },
+                resetEncode() {
+                    this.originalImageId = null;
+                    this.encodedImageId = null;
+                    this.password = '';
+                    this.encodeError = null;
+                    
+                    if (this.$refs.fileInput) {
+                        this.$refs.fileInput.value = '';
+                    }
+                },
+                handleDecodeFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.uploadImageForDecode(file);
+                    }
+                },
+                async uploadImageForDecode(file) {
+                    this.isDecoding = true;
+                    this.decodeError = null;
+                    this.decodedPassword = null;
+                    
+                    const formData = new FormData();
+                    formData.append('image', file);
+                    
+                    try {
+                        // First upload the image
+                        const uploadResponse = await axios.post(this.apiUrl + '/api/upload', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            }
+                        });
+                        
+                        if (uploadResponse.data.success) {
+                            this.encodedImageForDecodeId = uploadResponse.data.imageId;
+                            
+                            // Then try to decode the password
+                            const decodeResponse = await axios.get(this.apiUrl + '/api/decode/' + this.encodedImageForDecodeId);
+                            
+                            if (decodeResponse.data.success) {
+                                this.decodedPassword = decodeResponse.data.password;
+                            } else {
+                                this.decodeError = decodeResponse.data.error || 'Failed to decode password';
+                            }
+                        } else {
+                            this.decodeError = uploadResponse.data.error || 'Failed to upload image';
+                        }
+                    } catch (error) {
+                        this.decodeError = error.response?.data?.error || 'Failed to decode password';
+                    } finally {
+                        this.isDecoding = false;
+                    }
+                },
+                copyPassword() {
+                    if (!this.decodedPassword) return;
+                    
+                    navigator.clipboard.writeText(this.decodedPassword).then(() => {
+                        this.copied = true;
+                        setTimeout(() => {
+                            this.copied = false;
+                        }, 2000);
+                    });
+                },
+                resetDecode() {
+                    this.encodedImageForDecodeId = null;
+                    this.decodedPassword = null;
+                    this.decodeError = null;
+                    this.copied = false;
+                    
+                    if (this.$refs.decodeFileInput) {
+                        this.$refs.decodeFileInput.value = '';
+                    }
+                }
+            }
+        });
+        
+        app.mount('#app');
+    </script>
+</body>
+</html>
